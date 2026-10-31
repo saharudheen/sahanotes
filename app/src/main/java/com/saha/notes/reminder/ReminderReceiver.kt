@@ -32,11 +32,12 @@ class ReminderReceiver : BroadcastReceiver() {
                     }
 
                     ReminderScheduler.ACTION_SNOOZED_FIRE -> {
-                        dao.get(noteId)?.let { Notifications.showReminder(context, it) }
+                        dao.get(noteId)?.takeIf { !it.inTrash }?.let { Notifications.showReminder(context, it) }
                     }
 
                     ReminderScheduler.ACTION_FIRE -> {
                         val note = dao.get(noteId) ?: return@launch
+                        if (note.inTrash) return@launch
                         Notifications.showReminder(context, note)
                         val next = ReminderScheduler.nextOccurrence(
                             note.reminderAt ?: System.currentTimeMillis(), note.repeat

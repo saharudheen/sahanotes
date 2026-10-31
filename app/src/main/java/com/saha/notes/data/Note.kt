@@ -15,7 +15,15 @@ data class Note(
     /** Epoch millis of the next reminder, or null when no reminder is set. */
     val reminderAt: Long? = null,
     val repeat: Int = Repeat.NONE,
+    val favorite: Boolean = false,
+    val archived: Boolean = false,
+    /** When the note was moved to Trash, or null if it isn't in Trash. */
+    val deletedAt: Long? = null,
+    /** Category name, or "" for none. */
+    val category: String = "",
 ) {
+    val inTrash: Boolean get() = deletedAt != null
+
     /** True when everything the user can see is the same (timestamps ignored). */
     fun sameContentAs(other: Note): Boolean =
         copy(createdAt = 0, updatedAt = 0) == other.copy(createdAt = 0, updatedAt = 0)

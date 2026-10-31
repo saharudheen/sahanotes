@@ -1,6 +1,5 @@
 package com.saha.notes.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
@@ -25,5 +24,5 @@ val NoteColors = listOf(
 fun noteBackground(index: Int): Color {
     val color = NoteColors.getOrElse(index) { NoteColors[0] }
     if (color.light == Color.Unspecified) return MaterialTheme.colorScheme.surfaceContainerHigh
-    return if (isSystemInDarkTheme()) color.dark else color.light
+    return if (LocalDarkTheme.current) color.dark else color.light
 }

@@ -26,6 +26,7 @@ class EditorViewModel(app: Application, handle: SavedStateHandle) : AndroidViewM
 
     private val notesApp = app as NotesApp
     private val repo = notesApp.repository
+    private val settings = notesApp.settings
     private val saveLock = Mutex()
 
     val startWithVoice: Boolean = handle.get<Boolean>("voice") ?: false
@@ -37,6 +38,12 @@ class EditorViewModel(app: Application, handle: SavedStateHandle) : AndroidViewM
     var content by mutableStateOf(TextFieldValue(""))
     var colorIndex by mutableIntStateOf(0)
     var pinned by mutableStateOf(false)
+    var favorite by mutableStateOf(false)
+    var category by mutableStateOf(handle.get<String>("category").orEmpty())
+    var archived by mutableStateOf(false)
+        private set
+    var inTrash by mutableStateOf(false)
+        private set
     var reminderAt by mutableStateOf<Long?>(null)
         private set
     var repeat by mutableIntStateOf(Repeat.NONE)
@@ -45,10 +52,11 @@ class EditorViewModel(app: Application, handle: SavedStateHandle) : AndroidViewM
         private set
     var loaded by mutableStateOf(false)
         private set
-    var voiceLanguage by mutableStateOf(repo.voiceLanguage)
-        private set
+    val voiceLanguage: String get() = settings.voiceLanguage
+    val categories: List<String> get() = settings.categories
 
     private var createdAt = System.currentTimeMillis()
+    private var deletedAt: Long? = null
     private var saved: Note? = null
     private var deleted = false
 
@@ -66,6 +74,11 @@ class EditorViewModel(app: Application, handle: SavedStateHandle) : AndroidViewM
                     content = TextFieldValue(n.content)
                     colorIndex = n.colorIndex
                     pinned = n.pinned
+                    favorite = n.favorite
+                    category = n.category
+                    archived = n.archived
+                    deletedAt = n.deletedAt
+                    inTrash = n.inTrash
                     reminderAt = n.reminderAt
                     repeat = n.repeat
                     createdAt = n.createdAt
@@ -95,8 +108,7 @@ class EditorViewModel(app: Application, handle: SavedStateHandle) : AndroidViewM
     }
 
     fun toggleVoiceLanguage() {
-        voiceLanguage = if (voiceLanguage.startsWith("ta")) "en-IN" else "ta-IN"
-        repo.voiceLanguage = voiceLanguage
+        settings.voiceLanguage = if (voiceLanguage.startsWith("ta")) "en-IN" else "ta-IN"
     }
 
     fun setReminder(at: Long, repeatMode: Int) {
@@ -118,11 +130,46 @@ class EditorViewModel(app: Application, handle: SavedStateHandle) : AndroidViewM
         notesApp.appScope.launch { persist(snap) }
     }
 
-    fun delete(onDone: () -> Unit) {
+    fun toggleArchive(onDone: () -> Unit) {
+        archived = !archived
+        if (archived) pinned = false
+        val snap = snapshot()
+        viewModelScope.launch {
+            persist(snap)
+            onDone()
+        }
+    }
+
+    fun moveToTrash(onDone: () -> Unit) {
+        val snap = snapshot()
+        viewModelScope.launch {
+            persist(snap)
+            saveLock.withLock {
+                saved?.let { repo.moveToTrash(listOf(it)) }
+                deleted = true
+            }
+            onDone()
+        }
+    }
+
+    fun restoreFromTrash() {
+        viewModelScope.launch {
+            saveLock.withLock {
+                saved?.let {
+                    repo.restoreFromTrash(listOf(it))
+                    saved = it.copy(deletedAt = null)
+                }
+                deletedAt = null
+                inTrash = false
+            }
+        }
+    }
+
+    fun deleteForever(onDone: () -> Unit) {
         viewModelScope.launch {
             saveLock.withLock {
                 deleted = true
-                saved?.let { repo.delete(it) }
+                saved?.let { repo.deleteForever(listOf(it)) }
             }
             onDone()
         }
@@ -145,17 +192,21 @@ class EditorViewModel(app: Application, handle: SavedStateHandle) : AndroidViewM
         updatedAt = updatedAt,
         reminderAt = reminderAt,
         repeat = repeat,
+        favorite = favorite,
+        archived = archived,
+        deletedAt = deletedAt,
+        category = category,
     )
 
     private suspend fun persist(snap: Note): Unit = saveLock.withLock {
-        if (deleted || !loaded) return@withLock
+        if (deleted || !loaded || inTrash) return@withLock
         val current = snap.copy(id = noteId)
         val previous = saved
 
         if (current.title.isBlank() && current.content.isBlank()) {
             // Empty notes are discarded, like most note apps.
             if (previous != null) {
-                repo.delete(previous)
+                repo.deleteForever(listOf(previous))
                 saved = null
                 noteId = 0
             }

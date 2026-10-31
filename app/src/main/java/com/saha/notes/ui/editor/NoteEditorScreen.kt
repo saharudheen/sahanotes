@@ -17,6 +17,15 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -34,6 +43,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.outlined.PushPin
+import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material.icons.rounded.Archive
+import androidx.compose.material.icons.rounded.DeleteForever
+import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.RestoreFromTrash
+import androidx.compose.material.icons.rounded.Star
+import androidx.compose.material.icons.rounded.Unarchive
 import androidx.compose.material.icons.rounded.AddAlert
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Mic
@@ -50,6 +66,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -79,13 +96,14 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.saha.notes.reminder.ReminderScheduler
+import com.saha.notes.ui.components.CategoryPickerDialog
 import com.saha.notes.ui.components.ColorPalette
 import com.saha.notes.ui.components.Fmt
 import com.saha.notes.ui.components.ReminderChip
 import com.saha.notes.ui.components.shareNote
 import com.saha.notes.ui.theme.noteBackground
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun NoteEditorScreen(onBack: () -> Unit, vm: EditorViewModel = viewModel()) {
     val context = LocalContext.current
@@ -93,6 +111,7 @@ fun NoteEditorScreen(onBack: () -> Unit, vm: EditorViewModel = viewModel()) {
     var showPalette by rememberSaveable { mutableStateOf(false) }
     var showReminder by rememberSaveable { mutableStateOf(false) }
     var showDelete by rememberSaveable { mutableStateOf(false) }
+    var showCategory by rememberSaveable { mutableStateOf(false) }
     var showExactAlarmInfo by rememberSaveable { mutableStateOf(false) }
     var menuOpen by remember { mutableStateOf(false) }
 
@@ -160,49 +179,87 @@ fun NoteEditorScreen(onBack: () -> Unit, vm: EditorViewModel = viewModel()) {
                     }
                 },
                 actions = {
-                    IconButton(onClick = { vm.pinned = !vm.pinned }) {
-                        Icon(
-                            if (vm.pinned) Icons.Rounded.PushPin else Icons.Outlined.PushPin,
-                            contentDescription = if (vm.pinned) "Unpin" else "Pin",
-                        )
-                    }
-                    IconButton(onClick = openReminder) {
-                        Icon(
-                            if (vm.reminderAt != null) Icons.Rounded.NotificationsActive else Icons.Rounded.AddAlert,
-                            contentDescription = "Reminder",
-                        )
-                    }
-                    IconButton(onClick = { showPalette = !showPalette }) {
-                        Icon(Icons.Rounded.Palette, contentDescription = "Colour")
-                    }
-                    Box {
-                        IconButton(onClick = { menuOpen = true }) {
-                            Icon(Icons.Rounded.MoreVert, contentDescription = "More")
+                    if (vm.inTrash) {
+                        IconButton(onClick = {
+                            vm.restoreFromTrash()
+                            Toast.makeText(context, "Note restored", Toast.LENGTH_SHORT).show()
+                        }) { Icon(Icons.Rounded.RestoreFromTrash, contentDescription = "Restore") }
+                        IconButton(onClick = { showDelete = true }) {
+                            Icon(Icons.Rounded.DeleteForever, contentDescription = "Delete for good")
                         }
-                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                            DropdownMenuItem(
-                                text = { Text("Share") },
-                                leadingIcon = { Icon(Icons.Rounded.Share, null) },
-                                onClick = {
-                                    menuOpen = false
-                                    shareNote(context, vm.title, vm.content.text)
-                                },
+                    } else {
+                        IconButton(onClick = { vm.pinned = !vm.pinned }) {
+                            Icon(
+                                if (vm.pinned) Icons.Rounded.PushPin else Icons.Outlined.PushPin,
+                                contentDescription = if (vm.pinned) "Unpin" else "Pin",
                             )
-                            DropdownMenuItem(
-                                text = { Text("Delete") },
-                                leadingIcon = { Icon(Icons.Rounded.Delete, null) },
-                                onClick = {
-                                    menuOpen = false
-                                    showDelete = true
-                                },
+                        }
+                        IconButton(onClick = { vm.favorite = !vm.favorite }) {
+                            Icon(
+                                if (vm.favorite) Icons.Rounded.Star else Icons.Outlined.StarBorder,
+                                contentDescription = if (vm.favorite) "Remove from Favorites" else "Add to Favorites",
+                                tint = if (vm.favorite) Color(0xFFF2A900) else LocalContentColor.current,
                             )
+                        }
+                        IconButton(onClick = openReminder) {
+                            Icon(
+                                if (vm.reminderAt != null) Icons.Rounded.NotificationsActive else Icons.Rounded.AddAlert,
+                                contentDescription = "Reminder",
+                            )
+                        }
+                        IconButton(onClick = { showPalette = !showPalette }) {
+                            Icon(Icons.Rounded.Palette, contentDescription = "Colour")
+                        }
+                        Box {
+                            IconButton(onClick = { menuOpen = true }) {
+                                Icon(Icons.Rounded.MoreVert, contentDescription = "More")
+                            }
+                            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("Category") },
+                                    leadingIcon = { Icon(Icons.Rounded.Folder, null) },
+                                    onClick = { menuOpen = false; showCategory = true },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(if (vm.archived) "Unarchive" else "Archive") },
+                                    leadingIcon = { Icon(if (vm.archived) Icons.Rounded.Unarchive else Icons.Rounded.Archive, null) },
+                                    onClick = {
+                                        menuOpen = false
+                                        if (vm.isBlank) {
+                                            Toast.makeText(context, "Write something first", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            val msg = if (vm.archived) "Moved out of Archive" else "Archived"
+                                            vm.toggleArchive(onDone = onBack)
+                                            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Share") },
+                                    leadingIcon = { Icon(Icons.Rounded.Share, null) },
+                                    onClick = {
+                                        menuOpen = false
+                                        shareNote(context, vm.title, vm.content.text)
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Move to Trash") },
+                                    leadingIcon = { Icon(Icons.Rounded.Delete, null) },
+                                    onClick = {
+                                        menuOpen = false
+                                        val hadText = !vm.isBlank
+                                        vm.moveToTrash(onDone = onBack)
+                                        if (hadText) Toast.makeText(context, "Moved to Trash", Toast.LENGTH_SHORT).show()
+                                    },
+                                )
+                            }
                         }
                     }
                 },
             )
         },
         bottomBar = {
-            EditorBottomBar(
+            if (!vm.inTrash) EditorBottomBar(
                 background = background,
                 info = "Edited ${Fmt.short(vm.updatedAt)} · ${vm.wordCount} words",
                 tamil = vm.voiceLanguage.startsWith("ta"),
@@ -218,7 +275,26 @@ fun NoteEditorScreen(onBack: () -> Unit, vm: EditorViewModel = viewModel()) {
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp)
         ) {
-            AnimatedVisibility(visible = showPalette) {
+            if (vm.inTrash) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.errorContainer)
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "This note is in Trash. Restore it to edit.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = { vm.restoreFromTrash() }) { Text("Restore") }
+                }
+            }
+            AnimatedVisibility(visible = showPalette && !vm.inTrash) {
                 ColorPalette(selected = vm.colorIndex, onSelect = { vm.colorIndex = it })
             }
 
@@ -228,6 +304,7 @@ fun NoteEditorScreen(onBack: () -> Unit, vm: EditorViewModel = viewModel()) {
             BasicTextField(
                 value = vm.title,
                 onValueChange = { vm.title = it },
+                readOnly = vm.inTrash,
                 textStyle = MaterialTheme.typography.headlineSmall.copy(color = textColor, fontWeight = FontWeight.SemiBold),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
@@ -243,16 +320,35 @@ fun NoteEditorScreen(onBack: () -> Unit, vm: EditorViewModel = viewModel()) {
                 },
             )
 
-            vm.reminderAt?.let { at ->
-                ReminderChip(
-                    at = at, repeat = vm.repeat, onClick = openReminder,
-                    modifier = Modifier.padding(bottom = 8.dp),
-                )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.padding(bottom = 8.dp),
+            ) {
+                Row(
+                    Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                        .clickable(enabled = !vm.inTrash) { showCategory = true }
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Rounded.Folder, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        vm.category.ifBlank { "No category" },
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+                vm.reminderAt?.let { at ->
+                    ReminderChip(at = at, repeat = vm.repeat, onClick = if (vm.inTrash) null else openReminder)
+                }
             }
 
             BasicTextField(
                 value = vm.content,
                 onValueChange = { vm.content = it },
+                readOnly = vm.inTrash,
                 textStyle = MaterialTheme.typography.bodyLarge.copy(color = textColor),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
@@ -314,15 +410,24 @@ fun NoteEditorScreen(onBack: () -> Unit, vm: EditorViewModel = viewModel()) {
         )
     }
 
+    if (showCategory) {
+        CategoryPickerDialog(
+            categories = vm.categories,
+            current = vm.category,
+            onPick = { vm.category = it; showCategory = false },
+            onDismiss = { showCategory = false },
+        )
+    }
+
     if (showDelete) {
         AlertDialog(
             onDismissRequest = { showDelete = false },
-            title = { Text("Delete this note?") },
+            title = { Text("Delete for good?") },
             text = { Text("This can't be undone.") },
             confirmButton = {
                 TextButton(onClick = {
                     showDelete = false
-                    vm.delete(onDone = onBack)
+                    vm.deleteForever(onDone = onBack)
                 }) { Text("Delete", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
